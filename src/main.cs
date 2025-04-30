@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-
 if (args.Length < 2)
 {
     Console.Error.WriteLine("Usage: ./your_program.sh tokenize <filename>");
@@ -18,15 +15,24 @@ if (command != "tokenize")
 
 string fileContents = File.ReadAllText(filename);
 
-// You can use print statements as follows for debugging, they'll be visible when running tests.
-Console.Error.WriteLine("Logs from your program will appear here!");
+bool hadSyntaxError = false;
 
-// Uncomment this block to pass the first stage
-// if (!string.IsNullOrEmpty(fileContents))
-// {
-//     throw new NotImplementedException("Scanner not implemented");
-// }
-// else
-// {
-//     Console.WriteLine("EOF  null"); // Placeholder, remove this line when implementing the scanner
-// }
+var scanner = new LoxScanner(fileContents);
+scanner.Error += (_, args) =>
+{
+    var (line, column, message) = args;
+    hadSyntaxError = true;
+    Console.Error.WriteLine($"[line {line}] Error: {message}");
+
+};
+
+foreach (var loxToken in scanner.ScanTokens())
+{
+    Console.WriteLine(loxToken);
+}
+
+if (hadSyntaxError)
+{
+    return 65;
+}
+return 0;
