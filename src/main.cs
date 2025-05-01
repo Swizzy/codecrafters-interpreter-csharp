@@ -4,6 +4,7 @@ var supportedCommands = new Dictionary<string, string>
     {"tokenize", "Prints how the interpreter reads the script, one token per line."},
     {"parse", "Parses the script and prints the parse tree."},
     {"evaluate", "Evaluates the script and prints the result"},
+    {"run", "Runs the script."},
 };
 
 if (args.Length < 2)
@@ -27,8 +28,8 @@ if (supportedCommands.ContainsKey(command) == false)
 
 string fileContents = File.ReadAllText(filename);
 #else
-string command = "evaluate";
-string fileContents = "(true)";
+string command = "run";
+string fileContents = "var a = \"hello\"; { a = \"world\"; print a; }";
 #endif
 
 bool hadSyntaxError = false;
@@ -77,18 +78,26 @@ if (command == "tokenize")
 else if (command == "parse")
 {
     var astPrinter = new AstPrinter();
-    var ast = parser.Parse();
+    var expression = parser.ParseExpression();
     if (hadSyntaxError == false)
     {
-        Console.WriteLine(astPrinter.Print(ast!));
+        Console.WriteLine(astPrinter.Print(expression!));
     }
 }
 else if (command == "evaluate")
 {
-    var ast = parser.Parse();
+    var expression = parser.ParseExpression();
     if (hadSyntaxError == false)
     {
-        interpreter.Interpret(ast!);
+        interpreter.Interpret(expression!);
+    }
+}
+else if (command == "run")
+{
+    var statements = parser.Parse();
+    if (hadSyntaxError == false)
+    {
+        interpreter.Interpret(statements!);
     }
 }
 

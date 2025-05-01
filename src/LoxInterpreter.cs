@@ -1,13 +1,14 @@
 ﻿internal class LoxInterpreter : IExpressionVisitor<object?>, IStatementVisitor<object?>
 {
+    private LoxEnvironment _environment = new();
+
     public event EventHandler<(int Line, int Column, string Message)>? Error;
 
     public void Interpret(LoxExpressionBase expression)
     {
         try
         {
-            var value = Evaluate(expression);
-            Console.WriteLine(Stringify(value));
+            Console.WriteLine(Stringify(Evaluate(expression)));
         }
         catch (LoxRuntimeErrorException error)
         {
@@ -15,11 +16,47 @@
         }
     }
 
+    public void Interpret(List<LoxStatementBase> statements, bool evaluateLast = false)
+    {
+        try
+        {
+            foreach (var statement in statements)
+            {
+                Execute(statement);
+            }
+        }
+        catch (LoxRuntimeErrorException error)
+        {
+            Error?.Invoke(this, (error.Line, error.Column, error.Message));
+        }
+    }
+
+    public void ExecuteBlock(List<LoxStatementBase> statements, LoxEnvironment scopedEnvironment)
+    {
+        var previous = _environment;
+        try
+        {
+            _environment = scopedEnvironment;
+            foreach (var statement in statements)
+            {
+                Execute(statement);
+            }
+        }
+        finally
+        {
+            _environment = previous;
+        }
+    }
+
+    private void Execute(LoxStatementBase statement) => statement.Accept(this);
+
     public object? Evaluate(LoxExpressionBase expr) => expr.Accept(this);
 
     public object? VisitAssignExpr(LoxAssignExpression expr)
     {
-        throw new NotImplementedException();
+        var value = Evaluate(expr.Value);
+        _environment.Assign(expr.Name, value);
+        return value;
     }
 
     public object? VisitBinaryExpr(LoxBinaryExpression expr)
@@ -120,14 +157,12 @@
         }
     }
 
-    public object? VisitVariableExpr(LoxVariableExpression expr)
-    {
-        throw new NotImplementedException();
-    }
+    public object? VisitVariableExpr(LoxVariableExpression expr) => _environment.Get(expr.Name);
 
     public object? VisitBlockStmt(LoxBlockStatement stmt)
     {
-        throw new NotImplementedException();
+        ExecuteBlock(stmt.Statements, new LoxEnvironment(_environment));
+        return null;
     }
 
     public object? VisitClassStmt(LoxClassStatement stmt)
@@ -135,10 +170,7 @@
         throw new NotImplementedException();
     }
 
-    public object? VisitExpressionStmt(LoxExpressionStatement stmt)
-    {
-        throw new NotImplementedException();
-    }
+    public object? VisitExpressionStmt(LoxExpressionStatement stmt) => Evaluate(stmt.Expr);
 
     public object? VisitFunctionStmt(LoxFunctionStatement stmt)
     {
@@ -152,7 +184,9 @@
 
     public object? VisitPrintStmt(LoxPrintStatement stmt)
     {
-        throw new NotImplementedException();
+        var value = Evaluate(stmt.Expr);
+        Console.WriteLine(Stringify(value));
+        return null;
     }
 
     public object? VisitReturnStmt(LoxReturnStatement stmt)
@@ -162,7 +196,14 @@
 
     public object? VisitVarStmt(LoxVarStatement stmt)
     {
-        throw new NotImplementedException();
+        object? value = null;
+        if (stmt.Initializer is not null)
+        {
+            value = Evaluate(stmt.Initializer);
+        }
+
+        _environment.Define(stmt.Name.Lexeme!, value);
+        return null;
     }
 
     public object? VisitWhileStmt(LoxWhileStatement stmt)

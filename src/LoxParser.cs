@@ -7,7 +7,7 @@ internal class LoxParser
 
     public event EventHandler<(LoxToken token, string Message)>? Error;
 
-    public LoxExpressionBase? Parse()
+    public LoxExpressionBase? ParseExpression()
     {
         try
         {
@@ -17,6 +17,16 @@ internal class LoxParser
         {
             return null;
         }
+    }
+
+    public List<LoxStatementBase>? Parse()
+    {
+        var statements = new List<LoxStatementBase>();
+        while (!isAtEnd())
+        {
+            statements.Add(declaration());
+        }
+        return statements;
     }
 
     private bool isAtEnd() => peek().TokenType == LoxTokenTypes.EOF;
@@ -29,7 +39,7 @@ internal class LoxParser
         {
             return advance();
         }
-        throw new Exception(message);
+        throw error(peek(), message);
     }
 
     private LoxToken advance()
@@ -59,13 +69,128 @@ internal class LoxParser
         return false;
     }
 
+    private void synchronize()
+    {
+        advance();
+
+        while (!isAtEnd())
+        {
+            if (previous().TokenType == LoxTokenTypes.SEMICOLON) return;
+
+            switch (peek().TokenType)
+            {
+                case LoxTokenTypes.CLASS:
+                case LoxTokenTypes.FUN:
+                case LoxTokenTypes.VAR:
+                case LoxTokenTypes.FOR:
+                case LoxTokenTypes.IF:
+                case LoxTokenTypes.WHILE:
+                case LoxTokenTypes.PRINT:
+                case LoxTokenTypes.RETURN:
+                    return;
+            }
+
+            advance();
+        }
+    }
+
     private LoxParseErrorException error(LoxToken token, string message)
     {
         Error?.Invoke(this, (token, message));
         return new LoxParseErrorException();
     }
 
-    private LoxExpressionBase expression() => equality();
+    private LoxStatementBase declaration()
+    {
+        try
+        {
+            if (match(LoxTokenTypes.VAR))
+            {
+                return varDeclaration();
+            }
+            return statement();
+        }
+        catch (LoxParseErrorException)
+        {
+            synchronize();
+            return null;
+        }
+    }
+
+    private LoxStatementBase varDeclaration()
+    {
+        var name = consume(LoxTokenTypes.IDENTIFIER, "Expect variable name.");
+
+        LoxExpressionBase initializer = null;
+        if (match(LoxTokenTypes.EQUAL))
+        {
+            initializer = expression();
+        }
+        consume(LoxTokenTypes.SEMICOLON, "Expect ';' after variable declaration.");
+        return new LoxVarStatement(name, initializer);
+    }
+
+    private LoxStatementBase statement()
+    {
+        if (match(LoxTokenTypes.PRINT))
+        {
+            return printStatement();
+        }
+
+        if (match(LoxTokenTypes.LEFT_BRACE))
+        {
+            var brace = previous();
+            return new LoxBlockStatement(brace, block());
+        }
+        return expressionStatement();
+    }
+
+    private List<LoxStatementBase> block()
+    {
+        var statements = new List<LoxStatementBase>();
+
+        while (!isAtEnd() && !check(LoxTokenTypes.RIGHT_BRACE))
+        {
+            statements.Add(declaration());
+        }
+        consume(LoxTokenTypes.RIGHT_BRACE, "Expect '}' after block.");
+        return statements;
+    }
+
+    private LoxStatementBase expressionStatement()
+    {
+        var expr = expression();
+        consume(LoxTokenTypes.SEMICOLON, "Expect ';' after expression.");
+        return new LoxExpressionStatement(expr);
+    }
+
+    private LoxStatementBase printStatement()
+    {
+        var value = expression();
+        consume(LoxTokenTypes.SEMICOLON, "Expect ';' after value.");
+        return new LoxPrintStatement(value);
+    }
+
+    private LoxExpressionBase expression() => assignment();
+
+    private LoxExpressionBase assignment()
+    {
+        var expr = equality();
+
+        if (match(LoxTokenTypes.EQUAL))
+        {
+            var equals = previous();
+            var value = assignment();
+            if (expr is LoxVariableExpression variable)
+            {
+                var name = variable.Name;
+                return new LoxAssignExpression(name, value);
+            }
+            error(equals, "Invalid assignment target.");
+        }
+
+        return expr;
+    }
 
     private LoxExpressionBase equality()
     {
@@ -141,6 +266,10 @@ internal class LoxParser
         if (match(LoxTokenTypes.NUMBER, LoxTokenTypes.STRING, LoxTokenTypes.NIL))
         {
             return new LoxLiteralExpression(previous());
+        }
+        if (match(LoxTokenTypes.IDENTIFIER))
+        {
+            return new LoxVariableExpression(previous());
         }
         if (match(LoxTokenTypes.LEFT_PAREN))
         {
