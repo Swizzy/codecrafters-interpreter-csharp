@@ -3,6 +3,7 @@ var supportedCommands = new Dictionary<string, string>
 {
     {"tokenize", "Prints how the interpreter reads the script, one token per line."},
     {"parse", "Parses the script and prints the parse tree."},
+    {"evaluate", "Evaluates the script and prints the result"},
 };
 
 if (args.Length < 2)
@@ -26,11 +27,12 @@ if (supportedCommands.ContainsKey(command) == false)
 
 string fileContents = File.ReadAllText(filename);
 #else
-string command = "parse";
-string fileContents = "42.471";
+string command = "evaluate";
+string fileContents = "(true)";
 #endif
 
 bool hadSyntaxError = false;
+bool hadRuntimeError = false;
 
 var scanner = new LoxScanner(fileContents);
 scanner.Error += (_, args) =>
@@ -57,6 +59,14 @@ parser.Error += (_, args) =>
     }
 };
 
+var interpreter = new LoxInterpreter();
+interpreter.Error += (_, args) =>
+{
+    var (line, column, message) = args;
+    hadRuntimeError = true;
+    Console.Error.WriteLine($"[line {line} column {column}] Error: {message}");
+};
+
 if (command == "tokenize")
 {
     foreach (var loxToken in tokens)
@@ -73,9 +83,21 @@ else if (command == "parse")
         Console.WriteLine(astPrinter.Print(ast!));
     }
 }
+else if (command == "evaluate")
+{
+    var ast = parser.Parse();
+    if (hadSyntaxError == false)
+    {
+        interpreter.Interpret(ast!);
+    }
+}
 
 if (hadSyntaxError)
 {
     return 65;
+}
+if (hadRuntimeError)
+{
+    return 70;
 }
 return 0;
