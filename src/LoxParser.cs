@@ -35,7 +35,9 @@ internal class LoxParser
     }
 
     private bool isAtEnd() => peek().TokenType == LoxTokenTypes.EOF;
+
     private LoxToken peek() => _tokens[_current];
+
     private LoxToken previous() => _tokens[_current - 1];
 
     private LoxToken consume(LoxTokenTypes type, string message)
@@ -55,6 +57,7 @@ internal class LoxParser
         }
         return previous();
     }
+
     private bool check(LoxTokenTypes type)
     {
         if (isAtEnd())
@@ -109,6 +112,10 @@ internal class LoxParser
     {
         try
         {
+            if (match(LoxTokenTypes.CLASS))
+            {
+                return classDeclaration();
+            }
             if (match(LoxTokenTypes.FUN))
             {
                 return function("function");
@@ -126,7 +133,23 @@ internal class LoxParser
         }
     }
 
-    private LoxStatementBase? function(string kind)
+    private LoxStatementBase classDeclaration()
+    {
+        var name = consume(LoxTokenTypes.IDENTIFIER, "expect class name.");
+        consume(LoxTokenTypes.LEFT_BRACE, "Expect '{' before class body.");
+
+        var methods = new List<LoxFunctionStatement>();
+
+        while (check(LoxTokenTypes.RIGHT_BRACE) == false && isAtEnd() == false)
+        {
+            methods.Add(function("method"));
+        }
+
+        consume(LoxTokenTypes.RIGHT_BRACE, "Expect '}' after class body.");
+        return new LoxClassStatement(name, null, methods);
+    }
+
+    private LoxFunctionStatement function(string kind)
     {
         var name = consume(LoxTokenTypes.IDENTIFIER, $"Expect {kind} name.");
         consume(LoxTokenTypes.LEFT_PAREN, $"Expect '(' after {kind} name.");
@@ -353,11 +376,18 @@ internal class LoxParser
         {
             var equals = previous();
             var value = assignment();
+
             if (expr is LoxVariableExpression variable)
             {
                 var name = variable.Name;
                 return new LoxAssignExpression(name, value);
             }
+
+            if (expr is LoxGetExpression getExpr)
+            {
+                return new LoxSetExpression(getExpr.Object, getExpr.Name, value);
+            }
+
             error(equals, "Invalid assignment target.");
         }
 
@@ -462,6 +492,10 @@ internal class LoxParser
             {
                 expr = finishCall(expr);
             }
+            else if (match(LoxTokenTypes.DOT))
+            {
+                expr = new LoxGetExpression(expr, consume(LoxTokenTypes.IDENTIFIER, "Expect property name after '.'."));
+            }
             else
             {
                 break;
@@ -494,14 +528,22 @@ internal class LoxParser
         {
             return new LoxLiteralExpression(previous() with { Literal = false });
         }
+
         if (match(LoxTokenTypes.TRUE))
         {
             return new LoxLiteralExpression(previous() with { Literal = true });
         }
+
         if (match(LoxTokenTypes.NUMBER, LoxTokenTypes.STRING, LoxTokenTypes.NIL))
         {
             return new LoxLiteralExpression(previous());
         }
+
+        if (match(LoxTokenTypes.THIS))
+        {
+            return new LoxThisExpression(previous());
+        }
+
         if (match(LoxTokenTypes.IDENTIFIER))
         {
             return new LoxVariableExpression(previous());

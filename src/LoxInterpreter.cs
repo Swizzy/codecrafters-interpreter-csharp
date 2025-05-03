@@ -112,7 +112,7 @@
                 {
                     throw new LoxRuntimeErrorException(expr.Operator, "Divide by 0 detected.");
                 }
-                return (double)left! / (double)right!;
+                return (double)left! / (double)right;
             default:
                 throw new NotImplementedException($"Unknown binary operator: {expr.Operator.TokenType}");
         }
@@ -131,14 +131,7 @@
                 throw new LoxRuntimeErrorException(expr.Paren, $"Expected {function.Arity} arguments but got {arguments.Count}.");
             }
 
-            try
-            {
-                return function.Call(this, arguments);
-            }
-            catch (LoxReturnException ret)
-            {
-                return ret.Value;
-            }
+            return function.Call(this, arguments);
         }
 
         throw new LoxRuntimeErrorException(expr.Paren, "Can only call functions and classes.");
@@ -147,7 +140,12 @@
 
     public object? VisitGetExpr(LoxGetExpression expr)
     {
-        throw new NotImplementedException();
+        var obj = Evaluate(expr.Object);
+        if (obj is LoxInstance instance)
+        {
+            return instance.Get(expr.Name);
+        }
+        throw new LoxRuntimeErrorException(expr.Name, "Only instances have properties.");
     }
 
     public object? VisitGroupingExpr(LoxGroupingExpression expr) => Evaluate(expr.Expression);
@@ -178,7 +176,15 @@
 
     public object? VisitSetExpr(LoxSetExpression expr)
     {
-        throw new NotImplementedException();
+        var obj = Evaluate(expr.Object);
+
+        if (obj is LoxInstance instance)
+        {
+            return instance.Set(expr.Name, Evaluate(expr.Value));
+        }
+
+        throw new LoxRuntimeErrorException(expr.Name, "Only instances have properties.");
+
     }
 
     public object? VisitSuperExpr(LoxSuperExpression expr)
@@ -186,10 +192,7 @@
         throw new NotImplementedException();
     }
 
-    public object? VisitThisExpr(LoxThisExpression expr)
-    {
-        throw new NotImplementedException();
-    }
+    public object? VisitThisExpr(LoxThisExpression expr) => LookupVariable(expr.Keyword, expr);
 
     public object? VisitUnaryExpr(LoxUnaryExpression expr)
     {
@@ -217,7 +220,18 @@
 
     public object? VisitClassStmt(LoxClassStatement stmt)
     {
-        throw new NotImplementedException();
+        _environment.Define(stmt.Name.Lexeme!, null);
+
+        var methods = new Dictionary<string, LoxFunction>();
+        foreach (var method in stmt.Methods)
+        {
+            var function = new LoxFunction(method, _environment, method.Name.Lexeme!.Equals("init"));
+            //TODO: Disallow same name methods?
+            methods[method.Name.Lexeme!] = function;
+        }
+
+        _environment.Assign(stmt.Name, new LoxClass(stmt.Name, methods));
+        return null;
     }
 
     public object? VisitExpressionStmt(LoxExpressionStatement stmt) => Evaluate(stmt.Expr);

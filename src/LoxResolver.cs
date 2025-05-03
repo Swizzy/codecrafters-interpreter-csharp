@@ -3,11 +3,20 @@
     private enum FunctionTypes
     {
         None,
-        Function
+        Function,
+        Initializer,
+        Method
+    }
+
+    private enum ClassTypes
+    {
+        None,
+        Class
     }
 
     private readonly Stack<Dictionary<string, bool>> _scopes = new();
     private FunctionTypes _currentFunction = FunctionTypes.None;
+    private ClassTypes _currentClass = ClassTypes.None;
 
     public event EventHandler<(int Line, int Column, string Message)>? Error;
 
@@ -34,7 +43,8 @@
 
     public object? VisitGetExpr(LoxGetExpression expr)
     {
-        throw new NotImplementedException();
+        Resolve(expr.Object);
+        return null;
     }
 
     public object? VisitGroupingExpr(LoxGroupingExpression expr)
@@ -54,7 +64,9 @@
 
     public object? VisitSetExpr(LoxSetExpression expr)
     {
-        throw new NotImplementedException();
+        Resolve(expr.Value);
+        Resolve(expr.Object);
+        return null;
     }
 
     public object? VisitSuperExpr(LoxSuperExpression expr)
@@ -64,7 +76,13 @@
 
     public object? VisitThisExpr(LoxThisExpression expr)
     {
-        throw new NotImplementedException();
+        if (_currentClass == ClassTypes.None)
+        {
+            TriggerError(expr.Keyword, "Can't use 'this' outside of a class.");
+            return null;
+        }
+        ResolveLocal(expr, expr.Keyword);
+        return null;
     }
 
     public object? VisitUnaryExpr(LoxUnaryExpression expr)
@@ -94,7 +112,29 @@
 
     public object? VisitClassStmt(LoxClassStatement stmt)
     {
-        throw new NotImplementedException();
+        var enclosingClass = _currentClass;
+        _currentClass = ClassTypes.Class;
+        Declare(stmt.Name);
+        Define(stmt.Name);
+
+        BeginScope();
+        _scopes.Peek().Add("this", true);
+
+        foreach (var method in stmt.Methods)
+        {
+            var functionType = FunctionTypes.Method;
+            if (method.Name.Lexeme!.Equals("init"))
+            {
+                functionType = FunctionTypes.Initializer;
+            }
+
+            ResolveFunction(method, functionType);
+        }
+
+        EndScope();
+        _currentClass = enclosingClass;
+
+        return null;
     }
 
     public object? VisitExpressionStmt(LoxExpressionStatement stmt)
@@ -135,6 +175,11 @@
         if (_currentFunction == FunctionTypes.None)
         {
             TriggerError(stmt.Keyword, "Can't return from top-level code.");
+        }
+        else if (_currentFunction == FunctionTypes.Initializer && stmt.Value is not null)
+        {
+            TriggerError(stmt.Keyword, "Can't return a value from a initializer.");
+            return null; // We're not going to process this any further
         }
 
         if (stmt.Value is not null)
