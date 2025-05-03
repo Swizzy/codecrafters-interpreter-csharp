@@ -2,7 +2,8 @@
 var supportedCommands = new Dictionary<string, string>
 {
     {"tokenize", "Prints how the interpreter reads the script, one token per line."},
-    {"parse", "Parses the script and prints the parse tree."},
+    {"parse", "Parses the script as an expression and prints the parse tree."},
+    {"parse2", "Parses the script as statements and prints the parse tree."},
     {"evaluate", "Evaluates the script and prints the result"},
     {"run", "Runs the script."},
 };
@@ -29,7 +30,7 @@ if (supportedCommands.ContainsKey(command) == false)
 string fileContents = File.ReadAllText(filename);
 #else
 string command = "run";
-string fileContents = "var x = \"global\"; fun outer() { var x = \"outer\"; fun middle() { fun inner() { print x; } inner(); var x = \"middle\"; inner(); } middle(); } outer();";
+string fileContents = "for (var world = 0; world < 3; world = world + 1) { print world; }";
 #endif
 
 bool hadSyntaxError = false;
@@ -82,6 +83,19 @@ else if (command == "parse")
     if (hadSyntaxError == false)
     {
         Console.WriteLine(astPrinter.Print(expression!));
+    }
+}
+else if (command == "parse2")
+{
+    var astPrinter = new AstPrinter();
+    var statements = parser.Parse();
+    if (hadSyntaxError == false)
+    {
+        foreach (var statement in statements)
+        {
+            Console.WriteLine(astPrinter.Print(statement));
+
+        }
     }
 }
 else if (command == "evaluate")
