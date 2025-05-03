@@ -109,6 +109,10 @@ internal class LoxParser
     {
         try
         {
+            if (match(LoxTokenTypes.FUN))
+            {
+                return function("function");
+            }
             if (match(LoxTokenTypes.VAR))
             {
                 return varDeclaration();
@@ -120,6 +124,31 @@ internal class LoxParser
             synchronize();
             return null;
         }
+    }
+
+    private LoxStatementBase? function(string kind)
+    {
+        var name = consume(LoxTokenTypes.IDENTIFIER, $"Expect {kind} name.");
+        consume(LoxTokenTypes.LEFT_PAREN, $"Expect '(' after {kind} name.");
+
+        var parameters = new List<LoxToken>();
+        if (check(LoxTokenTypes.RIGHT_PAREN) == false)
+        {
+            do
+            {
+                if (parameters.Count >= 255)
+                {
+                    error(peek(), "Cannot have more than 255 parameters.");
+                }
+                parameters.Add(consume(LoxTokenTypes.IDENTIFIER, "Expect parameter name."));
+            } while (match(LoxTokenTypes.COMMA));
+        }
+        consume(LoxTokenTypes.RIGHT_PAREN, $"Expect ')' after {kind} parameters.");
+
+        consume(LoxTokenTypes.LEFT_BRACE, $"Expect '{{' before {kind} body.");
+        var body = block();
+
+        return new LoxFunctionStatement(name, parameters, body);
     }
 
     private LoxStatementBase varDeclaration()
@@ -152,6 +181,11 @@ internal class LoxParser
             return printStatement();
         }
 
+        if (match(LoxTokenTypes.RETURN))
+        {
+            return returnStatement();
+        }
+
         if (match(LoxTokenTypes.WHILE))
         {
             return whileStatement();
@@ -180,6 +214,18 @@ internal class LoxParser
             return new LoxContinueStatement(keywordToken);
         }
         return expressionStatement();
+    }
+
+    private LoxStatementBase returnStatement()
+    {
+        var keyword = previous();
+        LoxExpressionBase? value = null;
+        if (check(LoxTokenTypes.SEMICOLON) == false)
+        {
+            value = expression();
+        }
+        consume(LoxTokenTypes.SEMICOLON, "Expect ';' after return value.");
+        return new LoxReturnStatement(keyword, value);
     }
 
     private LoxStatementBase forStatement()
@@ -404,7 +450,42 @@ internal class LoxParser
             var right = unary();
             return new LoxUnaryExpression(operatorToken, right);
         }
-        return primary();
+        return call();
+    }
+
+    private LoxExpressionBase call()
+    {
+        var expr = primary();
+        while (true)
+        {
+            if (match(LoxTokenTypes.LEFT_PAREN))
+            {
+                expr = finishCall(expr);
+            }
+            else
+            {
+                break;
+            }
+        }
+        return expr;
+    }
+
+    private LoxExpressionBase finishCall(LoxExpressionBase callee)
+    {
+        var arguments = new List<LoxExpressionBase>();
+        if (check(LoxTokenTypes.RIGHT_PAREN) == false)
+        {
+            do
+            {
+                if (arguments.Count >= 255)
+                {
+                    error(peek(), "Cannot have more than 255 arguments.");
+                }
+                arguments.Add(expression());
+            } while (match(LoxTokenTypes.COMMA));
+        }
+        var paren = consume(LoxTokenTypes.RIGHT_PAREN, "Expect ')' after arguments.");
+        return new LoxCallExpression(callee, paren, arguments);
     }
 
     private LoxExpressionBase primary()

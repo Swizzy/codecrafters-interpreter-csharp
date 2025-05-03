@@ -4,6 +4,11 @@
 
     public event EventHandler<(int Line, int Column, string Message)>? Error;
 
+    public LoxInterpreter()
+    {
+        _environment.Define("clock", new LoxClock());
+    }
+
     public void Interpret(LoxExpressionBase expression)
     {
         try
@@ -112,7 +117,29 @@
 
     public object? VisitCallExpr(LoxCallExpression expr)
     {
-        throw new NotImplementedException();
+        var callee = Evaluate(expr.Callee);
+
+        var arguments = expr.Arguments.Select(Evaluate).ToList();
+
+        if (callee is ICallable function)
+        {
+            if (arguments.Count != function.Arity)
+            {
+                throw new LoxRuntimeErrorException(expr.Paren, $"Expected {function.Arity} arguments but got {arguments.Count}.");
+            }
+
+            try
+            {
+                return function.Call(this, arguments);
+            }
+            catch (LoxReturnException ret)
+            {
+                return ret.Value;
+            }
+        }
+
+        throw new LoxRuntimeErrorException(expr.Paren, "Can only call functions and classes.");
+
     }
 
     public object? VisitGetExpr(LoxGetExpression expr)
@@ -194,7 +221,9 @@
 
     public object? VisitFunctionStmt(LoxFunctionStatement stmt)
     {
-        throw new NotImplementedException();
+        var function = new LoxFunction(stmt, _environment);
+        _environment.Define(stmt.Name.Lexeme!, function);
+        return null;
     }
 
     public object? VisitIfStmt(LoxIfStatement stmt)
@@ -217,14 +246,19 @@
         return null;
     }
 
-    public object? VisitReturnStmt(LoxReturnStatement stmt)
+    public object VisitReturnStmt(LoxReturnStatement stmt)
     {
-        throw new NotImplementedException();
+        object? value = null;
+        if (stmt.Value is not null)
+        {
+            value = Evaluate(stmt.Value);
+        }
+        throw new LoxReturnException(stmt.Keyword, value);
     }
 
-    public object? VisitBreakStmt(LoxBreakStatement stmt) => throw new LoxBreakException(stmt.Keyword);
+    public object VisitBreakStmt(LoxBreakStatement stmt) => throw new LoxBreakException(stmt.Keyword);
 
-    public object? VisitContinueStmt(LoxContinueStatement stmt) => throw new LoxContinueException(stmt.Keyword);
+    public object VisitContinueStmt(LoxContinueStatement stmt) => throw new LoxContinueException(stmt.Keyword);
 
     public object? VisitVarStmt(LoxVarStatement stmt)
     {
@@ -267,7 +301,6 @@
             _ => true
         };
     }
-
 
     private bool IsEqual(object? a, object? b)
     {
