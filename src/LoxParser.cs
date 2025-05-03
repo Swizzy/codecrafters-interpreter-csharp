@@ -2,6 +2,7 @@ internal class LoxParser
 {
     private readonly List<LoxToken> _tokens;
     private int _current;
+    private readonly Stack<object?> _loopStack = new();
 
     public LoxParser(List<LoxToken> tokens) => _tokens = tokens;
 
@@ -19,12 +20,16 @@ internal class LoxParser
         }
     }
 
-    public List<LoxStatementBase>? Parse()
+    public List<LoxStatementBase> Parse()
     {
         var statements = new List<LoxStatementBase>();
         while (!isAtEnd())
         {
-            statements.Add(declaration());
+            var statement = declaration();
+            if (statement != null)
+            {
+                statements.Add(statement);
+            }
         }
         return statements;
     }
@@ -100,7 +105,7 @@ internal class LoxParser
         return new LoxParseErrorException();
     }
 
-    private LoxStatementBase declaration()
+    private LoxStatementBase? declaration()
     {
         try
         {
@@ -121,7 +126,7 @@ internal class LoxParser
     {
         var name = consume(LoxTokenTypes.IDENTIFIER, "Expect variable name.");
 
-        LoxExpressionBase initializer = null;
+        LoxExpressionBase? initializer = null;
         if (match(LoxTokenTypes.EQUAL))
         {
             initializer = expression();
@@ -132,9 +137,24 @@ internal class LoxParser
 
     private LoxStatementBase statement()
     {
+        if (match(LoxTokenTypes.FOR))
+        {
+            return forStatement();
+        }
+
+        if (match(LoxTokenTypes.IF))
+        {
+            return ifStatement();
+        }
+
         if (match(LoxTokenTypes.PRINT))
         {
             return printStatement();
+        }
+
+        if (match(LoxTokenTypes.WHILE))
+        {
+            return whileStatement();
         }
 
         if (match(LoxTokenTypes.LEFT_BRACE))
@@ -142,7 +162,109 @@ internal class LoxParser
             var brace = previous();
             return new LoxBlockStatement(brace, block());
         }
+
+        if (match(LoxTokenTypes.BREAK, LoxTokenTypes.CONTINUE)) // We match these together as they have exactly the same appearance and therefor just works...
+        {
+            var keywordToken = previous();
+            if (_loopStack.Any() == false)
+            {
+                throw error(previous(), $"Cannot use '{keywordToken.Lexeme}' outside of a loop.");
+            }
+
+            consume(LoxTokenTypes.SEMICOLON, $"Expect ';' after '{keywordToken.Lexeme}'.");
+
+            if (keywordToken.TokenType == LoxTokenTypes.BREAK)
+            {
+                return new LoxBreakStatement(keywordToken);
+            }
+            return new LoxContinueStatement(keywordToken);
+        }
         return expressionStatement();
+    }
+
+    private LoxStatementBase forStatement()
+    {
+        consume(LoxTokenTypes.LEFT_PAREN, "Expect '(' after 'for'.");
+        LoxStatementBase? initializer;
+        if (match(LoxTokenTypes.SEMICOLON))
+        {
+            initializer = null; // This is an empty initializer
+        }
+        else if (match(LoxTokenTypes.VAR))
+        {
+            initializer = varDeclaration(); // This is a variable declaration
+        }
+        else
+        {
+            initializer = expressionStatement(); // This is an expression statement most likely an assignment
+        }
+
+        LoxExpressionBase? condition;
+        if (check(LoxTokenTypes.SEMICOLON))
+        {
+            condition = new LoxLiteralExpression(previous() with { Literal = true, Lexeme = "true" });
+        }
+        else
+        {
+            condition = expression();
+        }
+        consume(LoxTokenTypes.SEMICOLON, "Expect ';' after loop condition.");
+
+        LoxExpressionBase? increment = null;
+        if (check(LoxTokenTypes.RIGHT_PAREN) == false)
+        {
+            increment = expression();
+        }
+        consume(LoxTokenTypes.RIGHT_PAREN, "Expect ')' after for clauses.");
+
+        _loopStack.Push(null);
+        var body = statement();
+        _loopStack.Pop();
+
+        if (increment != null)
+        {
+            body = new LoxBlockStatement(previous(), [body, new LoxExpressionStatement(increment)]);
+        }
+
+        body = new LoxWhileStatement(condition, body);
+        if (initializer != null)
+        {
+            body = new LoxBlockStatement(previous(), [initializer, body]);
+        }
+
+        return body;
+    }
+
+    private LoxStatementBase whileStatement()
+    {
+        consume(LoxTokenTypes.LEFT_PAREN, "Expect '(' after 'while'.");
+        var condition = expression();
+        consume(LoxTokenTypes.RIGHT_PAREN, "Expect ')' after condition.");
+
+        _loopStack.Push(null);
+
+        var body = statement();
+
+        _loopStack.Pop();
+
+        return new LoxWhileStatement(condition, body);
+    }
+
+    private LoxStatementBase ifStatement()
+    {
+        consume(LoxTokenTypes.LEFT_PAREN, "Expect '(' after 'if'.");
+        var condition = expression();
+        consume(LoxTokenTypes.RIGHT_PAREN, "Expect ')' after condition.");
+
+        var thenBranch = statement();
+
+        LoxStatementBase? elseBranch = null;
+        if (match(LoxTokenTypes.ELSE))
+        {
+            elseBranch = statement();
+        }
+
+        return new LoxIfStatement(condition, thenBranch, elseBranch);
     }
 
     private List<LoxStatementBase> block()
@@ -151,7 +273,11 @@ internal class LoxParser
 
         while (!isAtEnd() && !check(LoxTokenTypes.RIGHT_BRACE))
         {
-            statements.Add(declaration());
+            var statement = declaration();
+            if (statement != null)
+            {
+                statements.Add(statement);
+            }
         }
         consume(LoxTokenTypes.RIGHT_BRACE, "Expect '}' after block.");
         return statements;
@@ -175,7 +301,7 @@ internal class LoxParser
 
     private LoxExpressionBase assignment()
     {
-        var expr = equality();
+        var expr = or();
 
         if (match(LoxTokenTypes.EQUAL))
         {
@@ -187,6 +313,34 @@ internal class LoxParser
                 return new LoxAssignExpression(name, value);
             }
             error(equals, "Invalid assignment target.");
+        }
+
+        return expr;
+    }
+
+    private LoxExpressionBase or()
+    {
+        var expr = and();
+
+        while (match(LoxTokenTypes.OR))
+        {
+            var operatorToken = previous();
+            var right = equality();
+            expr = new LoxLogicalExpression(expr, operatorToken, right);
+        }
+
+        return expr;
+    }
+
+    private LoxExpressionBase and()
+    {
+        var expr = equality();
+
+        while (match(LoxTokenTypes.AND))
+        {
+            var operatorToken = previous();
+            var right = equality();
+            expr = new LoxLogicalExpression(expr, operatorToken, right);
         }
 
         return expr;

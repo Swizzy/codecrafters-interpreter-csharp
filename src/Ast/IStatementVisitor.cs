@@ -7,6 +7,8 @@
     TResult VisitIfStmt(LoxIfStatement stmt);
     TResult VisitPrintStmt(LoxPrintStatement stmt);
     TResult VisitReturnStmt(LoxReturnStatement stmt);
+    TResult VisitBreakStmt(LoxBreakStatement stmt);
+    TResult VisitContinueStmt(LoxContinueStatement stmt);
     TResult VisitVarStmt(LoxVarStatement stmt);
     TResult VisitWhileStmt(LoxWhileStatement stmt);
 }

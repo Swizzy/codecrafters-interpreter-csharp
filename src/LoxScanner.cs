@@ -23,7 +23,9 @@ internal class LoxScanner
         { "this", LoxTokenTypes.THIS },
         { "true", LoxTokenTypes.TRUE },
         { "var", LoxTokenTypes.VAR },
-        { "while", LoxTokenTypes.WHILE }
+        { "while", LoxTokenTypes.WHILE },
+        { "break", LoxTokenTypes.BREAK },
+        { "continue", LoxTokenTypes.CONTINUE },
     };
 
     private bool IsAtEnd => _current >= _source.Length;

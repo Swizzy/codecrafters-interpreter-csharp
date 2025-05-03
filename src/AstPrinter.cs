@@ -86,6 +86,10 @@ internal class AstPrinter : IExpressionVisitor<string>, IStatementVisitor<string
         return Parenthesize("return", stmt.Value);
     }
 
+    public string VisitBreakStmt(LoxBreakStatement stmt) => Parenthesize("break");
+
+    public string VisitContinueStmt(LoxContinueStatement stmt) => Parenthesize("continue");
+
     public string VisitVarStmt(LoxVarStatement stmt)
     {
         if (stmt.Initializer is null)

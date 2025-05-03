@@ -124,7 +124,27 @@
 
     public object? VisitLiteralExpr(LoxLiteralExpression expr) => expr.Value.Literal;
 
-    public object? VisitLogicalExpr(LoxLogicalExpression expr) => Evaluate(expr);
+    public object? VisitLogicalExpr(LoxLogicalExpression expr)
+    {
+        var left = Evaluate(expr.Left);
+
+        if (expr.Operator.TokenType == LoxTokenTypes.OR)
+        {
+            if (IsTruthy(left))
+            {
+                return left;
+            }
+        }
+        else
+        {
+            if (IsTruthy(left) == false)
+            {
+                return left;
+            }
+        }
+
+        return Evaluate(expr.Right);
+    }
 
     public object? VisitSetExpr(LoxSetExpression expr)
     {
@@ -179,7 +199,15 @@
 
     public object? VisitIfStmt(LoxIfStatement stmt)
     {
-        throw new NotImplementedException();
+        if (IsTruthy(Evaluate(stmt.Condition)))
+        {
+            Execute(stmt.ThenBranch);
+        }
+        else if (stmt.ElseBranch is not null)
+        {
+            Execute(stmt.ElseBranch);
+        }
+        return null;
     }
 
     public object? VisitPrintStmt(LoxPrintStatement stmt)
@@ -193,6 +221,10 @@
     {
         throw new NotImplementedException();
     }
+
+    public object? VisitBreakStmt(LoxBreakStatement stmt) => throw new LoxBreakException(stmt.Keyword);
+
+    public object? VisitContinueStmt(LoxContinueStatement stmt) => throw new LoxContinueException(stmt.Keyword);
 
     public object? VisitVarStmt(LoxVarStatement stmt)
     {
@@ -208,7 +240,22 @@
 
     public object? VisitWhileStmt(LoxWhileStatement stmt)
     {
-        throw new NotImplementedException();
+        while (IsTruthy(Evaluate(stmt.Condition)))
+        {
+            try
+            {
+                Execute(stmt.Body);
+            }
+            catch (LoxBreakException)
+            {
+                break; // We're done with this loop, just break out of it...
+            }
+            catch (LoxContinueException)
+            {
+                // Continue with execution, we just wanted to end up back here again
+            }
+        }
+        return null;
     }
 
     private static bool IsTruthy(object? obj)

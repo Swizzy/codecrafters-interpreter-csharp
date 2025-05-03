@@ -1,7 +1,7 @@
 internal record LoxToken
 {
     public LoxTokenTypes TokenType { get; }
-    public string? Lexeme { get; }
+    public string? Lexeme { get; init; }
     public object? Literal { get; init; }
     public int Line { get; }
     public int Column { get; }
