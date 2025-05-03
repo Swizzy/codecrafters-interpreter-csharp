@@ -189,6 +189,7 @@
         if (scope.ContainsKey(name.Lexeme!))
         {
             TriggerError(name, "Variable with this name already declared in this scope.");
+            return;
         }
 
         scope.Add(name.Lexeme!, false);
