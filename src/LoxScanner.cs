@@ -202,7 +202,11 @@ internal class LoxScanner
         AddToken(LoxTokenTypes.IDENTIFIER);
     }
 
-    private char Advance() => _source[_current++];
+    private char Advance()
+    {
+        _currentColumn++;
+        return _source[_current++];
+    }
 
     private bool Match(char expected)
     {
@@ -216,7 +220,7 @@ internal class LoxScanner
             return false; // The next character is not the one we were looking for
         }
 
-        _current++;
+        Advance(); // Consume the character
         return true;
     }
 
