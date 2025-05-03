@@ -15,13 +15,10 @@ internal class LoxEnvironment
             return value;
         }
 
-        if (_enclosing is not null)
-        {
-            return _enclosing.Get(token);
-        }
-
         throw new LoxRuntimeErrorException(token, $"Undefined variable '{token.Lexeme}'.");
     }
+
+    public object? GetAt(int distance, LoxToken name) => Ancestor(distance, name).Get(name);
 
     public void Assign(LoxToken name, object? value)
     {
@@ -31,12 +28,18 @@ internal class LoxEnvironment
             return;
         }
 
-        if (_enclosing is not null)
-        {
-            _enclosing.Assign(name, value);
-            return;
-        }
-
         throw new LoxRuntimeErrorException(name, "Undefined variable '" + name.Lexeme + "'.");
+    }
+
+    public void AssignAt(int distance, LoxToken name, object? value) => Ancestor(distance, name).Assign(name, value);
+
+    private LoxEnvironment Ancestor(int distance, LoxToken token)
+    {
+        var environment = this;
+        for (int i = 0; i < distance; i++)
+        {
+            environment = environment._enclosing ?? throw new LoxRuntimeErrorException(token, "No enclosing environment found.");
+        }
+        return environment;
     }
 }

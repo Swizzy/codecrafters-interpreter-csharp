@@ -29,7 +29,7 @@ if (supportedCommands.ContainsKey(command) == false)
 string fileContents = File.ReadAllText(filename);
 #else
 string command = "run";
-string fileContents = "var a = \"hello\"; { a = \"world\"; print a; }";
+string fileContents = "var x = \"global\"; fun outer() { var x = \"outer\"; fun middle() { fun inner() { print x; } inner(); var x = \"middle\"; inner(); } middle(); } outer();";
 #endif
 
 bool hadSyntaxError = false;
@@ -38,7 +38,7 @@ bool hadRuntimeError = false;
 var scanner = new LoxScanner(fileContents);
 scanner.Error += (_, args) =>
 {
-    var (line, column, message) = args;
+    var (line, _, message) = args;
     hadSyntaxError = true;
     Console.Error.WriteLine($"[line {line}] Error: {message}");
 };
@@ -97,7 +97,20 @@ else if (command == "run")
     var statements = parser.Parse();
     if (hadSyntaxError == false)
     {
-        interpreter.Interpret(statements!);
+        var resolver = new LoxResolver(interpreter);
+        resolver.Error += (_, args) =>
+        {
+            var (line, column, message) = args;
+            hadRuntimeError = true;
+            Console.Error.WriteLine($"[line {line} column {column}] Error: {message}");
+        };
+
+        resolver.Resolve(statements);
+
+        if (!hadRuntimeError) // We already know we're not going to be able to run this, so just ignore it.
+        {
+            interpreter.Interpret(statements);
+        }
     }
 }
 

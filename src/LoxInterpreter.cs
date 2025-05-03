@@ -1,11 +1,14 @@
 ﻿internal class LoxInterpreter : IExpressionVisitor<object?>, IStatementVisitor<object?>
 {
-    private LoxEnvironment _environment = new();
+    private readonly LoxEnvironment _globals = new();
+    private readonly Dictionary<LoxExpressionBase, int> _locals = new();
+    private LoxEnvironment _environment;
 
     public event EventHandler<(int Line, int Column, string Message)>? Error;
 
     public LoxInterpreter()
     {
+        _environment = _globals;
         _environment.Define("clock", new LoxClock());
     }
 
@@ -53,14 +56,14 @@
         }
     }
 
-    private void Execute(LoxStatementBase statement) => statement.Accept(this);
+    public void Resolve(LoxExpressionBase expr, int scopeIndex) => _locals[expr] = scopeIndex;
 
     public object? Evaluate(LoxExpressionBase expr) => expr.Accept(this);
 
     public object? VisitAssignExpr(LoxAssignExpression expr)
     {
         var value = Evaluate(expr.Value);
-        _environment.Assign(expr.Name, value);
+        AssignVariable(expr.Name, expr, value);
         return value;
     }
 
@@ -204,7 +207,7 @@
         }
     }
 
-    public object? VisitVariableExpr(LoxVariableExpression expr) => _environment.Get(expr.Name);
+    public object? VisitVariableExpr(LoxVariableExpression expr) => LookupVariable(expr.Name, expr);
 
     public object? VisitBlockStmt(LoxBlockStatement stmt)
     {
@@ -341,5 +344,28 @@
             double d => d.ToString("0.##########"),
             _ => value.ToString()
         };
+    }
+
+    private void Execute(LoxStatementBase statement) => statement.Accept(this);
+
+    private object? LookupVariable(LoxToken name, LoxExpressionBase expr)
+    {
+        if (_locals.TryGetValue(expr, out var distance))
+        {
+            return _environment.GetAt(distance, name);
+        }
+
+        return _globals.Get(name);
+    }
+
+    private void AssignVariable(LoxToken name, LoxExpressionBase expr, object? value)
+    {
+        if (_locals.TryGetValue(expr, out var distance))
+        {
+            _environment.AssignAt(distance, name, value);
+            return;
+        }
+
+        _globals.Assign(name, value);
     }
 }
