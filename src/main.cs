@@ -115,13 +115,13 @@ else if (command == "run")
         resolver.Error += (_, args) =>
         {
             var (line, column, message) = args;
-            hadRuntimeError = true;
+            hadSyntaxError = true;
             Console.Error.WriteLine($"[line {line} column {column}] Error: {message}");
         };
 
         resolver.Resolve(statements);
 
-        if (!hadRuntimeError) // We already know we're not going to be able to run this, so just ignore it.
+        if (hadSyntaxError == false) // We already know we're not going to be able to run this, so just ignore it.
         {
             interpreter.Interpret(statements);
         }
