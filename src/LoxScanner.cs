@@ -1,11 +1,12 @@
 using System.Globalization;
+using CommunityToolkit.HighPerformance.Buffers;
 
 internal class LoxScanner
 {
     private readonly string _source;
-    private readonly List<LoxToken> _tokens = [];
     private int _start, _startLine, _startColumn; // These are to keep track of where the token starts
     private int _current, _currentLine = 1, _currentColumn = 1; // These are to keep track of where we are right now
+    private readonly Dictionary<string, LoxTokenTypes>.AlternateLookup<ReadOnlySpan<char>> _keywordLookup;
     private readonly Dictionary<string, LoxTokenTypes> _keywords = new()
     {
         { "and", LoxTokenTypes.AND },
@@ -29,23 +30,30 @@ internal class LoxScanner
     };
 
     private bool IsAtEnd => _current >= _source.Length;
-    private string Text => _source[_start.._current]; // The text of the current token
+    private ReadOnlySpan<char> Lexeme => _source.AsSpan(_start, _current - _start); // The lexeme of the current token
 
     public event EventHandler<(int Line, int Column, string Message)>? Error;
 
-    public LoxScanner(string source) => _source = source;
+    public LoxScanner(string source)
+    {
+        _keywordLookup = _keywords.GetAlternateLookup<ReadOnlySpan<char>>();
+        _source = source;
+    }
 
-    public List<LoxToken> ScanTokens()
+    public IEnumerable<LoxToken> ScanTokens()
     {
         while (IsAtEnd == false)
         {
             // Scan the next token
-            ScanToken();
+            var token = ScanToken();
+            if (token is not null)
+            {
+                yield return token;
+            }
         }
         StartToken();
-        // Add EOF token at the end
-        AddToken(LoxTokenTypes.EOF);
-        return _tokens;
+        yield return CreateToken(LoxTokenTypes.EOF);
+
     }
 
     private void StartToken()
@@ -55,26 +63,26 @@ internal class LoxScanner
         _startColumn = _currentColumn;
     }
 
-    private void ScanToken()
+    private LoxToken? ScanToken()
     {
         StartToken();
         var c = Advance();
         switch (c)
         {
-            case '(': AddToken(LoxTokenTypes.LEFT_PAREN); break;
-            case ')': AddToken(LoxTokenTypes.RIGHT_PAREN); break;
-            case '{': AddToken(LoxTokenTypes.LEFT_BRACE); break;
-            case '}': AddToken(LoxTokenTypes.RIGHT_BRACE); break;
-            case ',': AddToken(LoxTokenTypes.COMMA); break;
-            case '.': AddToken(LoxTokenTypes.DOT); break;
-            case '-': AddToken(LoxTokenTypes.MINUS); break;
-            case '+': AddToken(LoxTokenTypes.PLUS); break;
-            case ';': AddToken(LoxTokenTypes.SEMICOLON); break;
-            case '*': AddToken(LoxTokenTypes.STAR); break;
-            case '!': AddToken(Match('=') ? LoxTokenTypes.BANG_EQUAL : LoxTokenTypes.BANG); break;
-            case '=': AddToken(Match('=') ? LoxTokenTypes.EQUAL_EQUAL : LoxTokenTypes.EQUAL); break;
-            case '<': AddToken(Match('=') ? LoxTokenTypes.LESS_EQUAL : LoxTokenTypes.LESS); break;
-            case '>': AddToken(Match('=') ? LoxTokenTypes.GREATER_EQUAL : LoxTokenTypes.GREATER); break;
+            case '(': return CreateToken(LoxTokenTypes.LEFT_PAREN);
+            case ')': return CreateToken(LoxTokenTypes.RIGHT_PAREN);
+            case '{': return CreateToken(LoxTokenTypes.LEFT_BRACE);
+            case '}': return CreateToken(LoxTokenTypes.RIGHT_BRACE);
+            case ',': return CreateToken(LoxTokenTypes.COMMA);
+            case '.': return CreateToken(LoxTokenTypes.DOT);
+            case '-': return CreateToken(LoxTokenTypes.MINUS);
+            case '+': return CreateToken(LoxTokenTypes.PLUS);
+            case ';': return CreateToken(LoxTokenTypes.SEMICOLON);
+            case '*': return CreateToken(LoxTokenTypes.STAR);
+            case '!': return CreateToken(Match('=') ? LoxTokenTypes.BANG_EQUAL : LoxTokenTypes.BANG);
+            case '=': return CreateToken(Match('=') ? LoxTokenTypes.EQUAL_EQUAL : LoxTokenTypes.EQUAL);
+            case '<': return CreateToken(Match('=') ? LoxTokenTypes.LESS_EQUAL : LoxTokenTypes.LESS);
+            case '>': return CreateToken(Match('=') ? LoxTokenTypes.GREATER_EQUAL : LoxTokenTypes.GREATER);
             case '/':
                 if (Match('/'))
                 {
@@ -86,12 +94,11 @@ internal class LoxScanner
                 }
                 else if (Match('*'))
                 {
-                    Advance(); // Consume the '*'
                     HandleBlockComment();
                 }
                 else
                 {
-                    AddToken(LoxTokenTypes.SLASH);
+                    return CreateToken(LoxTokenTypes.SLASH);
                 }
                 break;
             case ' ':
@@ -102,22 +109,24 @@ internal class LoxScanner
                 _currentLine++;
                 _currentColumn = 1; // Reset column to 1 at the start of a new line
                 break;
-            case '"': HandleString(); break;
+            case '"': return HandleString();
             default:
                 if (IsDigit(c))
                 {
-                    HandleNumber();
+                    return HandleNumber();
                 }
-                else if (IsAlpha(c))
+
+                if (IsAlpha(c))
                 {
-                    HandleIdentifier();
+                    return HandleIdentifier();
                 }
-                else
-                {
-                    HandleError($"Unexpected character: {c}");
-                }
+
+                HandleError($"Unexpected character: {c}");
+
                 break;
         }
+
+        return null;
     }
 
     private void HandleBlockComment()
@@ -128,25 +137,27 @@ internal class LoxScanner
             {
                 Advance(); // Consume the '*'
                 Advance(); // Consume the '/'
-                return;
+                return; // Exit the block comment
             }
+            // Handle nested block comments
             if (Peek == '/' && PeekNext == '*')
             {
                 Advance(); // Consume the '/'
                 Advance(); // Consume the '*'
-                HandleBlockComment();
+                HandleBlockComment(); // Recursively handle the nested comment. After returning from recursive call, continue scanning for the current comment's end
+                continue;
             }
             if (Peek == '\n')
             {
                 _currentLine++;
                 _currentColumn = 1; // Reset column to 1 at the start of a new line
             }
-            Advance();
+            Advance(); // Consume the current character inside the comment
         }
         HandleError("Unterminated block comment.");
     }
 
-    private void HandleNumber()
+    private LoxToken HandleNumber()
     {
         while (IsDigit(Peek) && IsAtEnd == false)
         {
@@ -161,10 +172,10 @@ internal class LoxScanner
                 Advance();
             }
         }
-        AddToken(LoxTokenTypes.NUMBER, double.Parse(Text, NumberFormatInfo.InvariantInfo));
+        return CreateToken(LoxTokenTypes.NUMBER, double.Parse(Lexeme, NumberFormatInfo.InvariantInfo));
     }
 
-    private void HandleString()
+    private LoxToken? HandleString()
     {
         while (Peek != '"' && IsAtEnd == false)
         {
@@ -179,27 +190,27 @@ internal class LoxScanner
         if (IsAtEnd)
         {
             HandleError("Unterminated string.");
-            return;
+            return null;
         }
 
-        Advance();
-        var value = _source[(_start + 1)..(_current - 1)];
-        AddToken(LoxTokenTypes.STRING, value);
+        Advance(); // Consume the closing '"'
+        var value = StringPool.Shared.GetOrAdd(Lexeme.Slice(1, Lexeme.Length - 2));
+        return CreateToken(LoxTokenTypes.STRING, value);
     }
 
-    private void HandleIdentifier()
+    private LoxToken HandleIdentifier()
     {
         while (IsAlphaNumeric(Peek))
         {
             Advance();
         }
 
-        if (_keywords.TryGetValue(Text, out var tokenType))
+        // Check if this is a known keyword, if so - use that token type
+        if (_keywordLookup.TryGetValue(Lexeme, out var tokenType))
         {
-            AddToken(tokenType);
-            return;
+            return CreateToken(tokenType);
         }
-        AddToken(LoxTokenTypes.IDENTIFIER);
+        return CreateToken(LoxTokenTypes.IDENTIFIER);
     }
 
     private char Advance()
@@ -251,15 +262,16 @@ internal class LoxScanner
     }
 
     private bool IsDigit(char c) => c is >= '0' and <= '9';
+
     private bool IsAlpha(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_';
 
     private bool IsAlphaNumeric(char c) => IsDigit(c) || IsAlpha(c);
 
     private void HandleError(string message) => Error?.Invoke(this, (_currentLine, _currentColumn, message));
 
-    private void AddToken(LoxTokenTypes tokenType, object? literal = null)
+    private LoxToken CreateToken(LoxTokenTypes tokenType, object? literal = null)
     {
-        string text = Text;
-        _tokens.Add(new LoxToken(tokenType, text, literal, _startLine, _startColumn));
+        var text = StringPool.Shared.GetOrAdd(Lexeme);
+        return new LoxToken(tokenType, text, literal, _startLine, _startColumn);
     }
 }
