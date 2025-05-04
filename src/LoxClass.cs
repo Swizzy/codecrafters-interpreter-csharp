@@ -1,4 +1,4 @@
-﻿internal record LoxClass(LoxToken Token, Dictionary<string, LoxFunction> Methods) : ICallable
+﻿internal record LoxClass(LoxToken Token, LoxClass? SuperClass, Dictionary<string, LoxFunction> Methods) : ICallable
 {
     private LoxFunction? Initializer => FindMethod("init");
 
@@ -19,5 +19,5 @@
 
     public override string ToString() => Token.Lexeme!;
 
-    public LoxFunction? FindMethod(string name) => Methods.GetValueOrDefault(name);
+    public LoxFunction? FindMethod(string name) => Methods.GetValueOrDefault(name) ?? SuperClass?.FindMethod(name); // Search local methods first, if we can't find it locally, try looking in the super class instead if we have one
 }

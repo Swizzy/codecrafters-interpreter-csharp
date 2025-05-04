@@ -187,9 +187,15 @@
 
     }
 
-    public object? VisitSuperExpr(LoxSuperExpression expr)
+    public object VisitSuperExpr(LoxSuperExpression expr)
     {
-        throw new NotImplementedException();
+        var distance = _locals[expr];
+        var super = (LoxClass)_environment.GetAt(distance, expr.Keyword)!;
+        var obj = (LoxInstance)_environment.GetAt(distance - 1, expr.Keyword with { Lexeme = "this" })!;
+
+        var method = super.FindMethod(expr.Method.Lexeme!) ?? throw new LoxRuntimeErrorException(expr.Method, "Undefined property '" + expr.Method.Lexeme + "'.");
+
+        return method.Bind(obj);
     }
 
     public object? VisitThisExpr(LoxThisExpression expr) => LookupVariable(expr.Keyword, expr);
@@ -220,7 +226,25 @@
 
     public object? VisitClassStmt(LoxClassStatement stmt)
     {
+        LoxClass? superClass = null;
+        if (stmt.Superclass is not null)
+        {
+            superClass = Evaluate(stmt.Superclass) as LoxClass;
+            if (superClass is null)
+            {
+                throw new LoxRuntimeErrorException(stmt.Superclass.Name, "Superclass must be a class.");
+            }
+        }
+
         _environment.Define(stmt.Name.Lexeme!, null);
+
+        var enclosingEnvironment = _environment; // We need a reference to the current environment so we can restore it after processing the methods in case we replace it for the possible super class reference
+
+        if (stmt.Superclass is not null)
+        {
+            _environment = new LoxEnvironment(_environment);
+            _environment.Define("super", superClass);
+        }
 
         var methods = new Dictionary<string, LoxFunction>();
         foreach (var method in stmt.Methods)
@@ -230,7 +254,9 @@
             methods[method.Name.Lexeme!] = function;
         }
 
-        _environment.Assign(stmt.Name, new LoxClass(stmt.Name, methods));
+        _environment = enclosingEnvironment;
+
+        _environment.Assign(stmt.Name, new LoxClass(stmt.Name, superClass, methods));
         return null;
     }
 

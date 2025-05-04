@@ -28,7 +28,7 @@ internal class LoxEnvironment
             return;
         }
 
-        throw new LoxRuntimeErrorException(name, "Undefined variable '" + name.Lexeme + "'.");
+        throw new LoxRuntimeErrorException(name, $"Undefined variable '{name.Lexeme}'.");
     }
 
     public void AssignAt(int distance, LoxToken name, object? value) => Ancestor(distance, name).Assign(name, value);

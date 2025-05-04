@@ -136,6 +136,14 @@ internal class LoxParser
     private LoxStatementBase classDeclaration()
     {
         var name = consume(LoxTokenTypes.IDENTIFIER, "expect class name.");
+
+        LoxVariableExpression? superClass = null;
+
+        if (match(LoxTokenTypes.LESS))
+        {
+            superClass = new LoxVariableExpression(consume(LoxTokenTypes.IDENTIFIER, "Expect superclass name."));
+        }
+
         consume(LoxTokenTypes.LEFT_BRACE, "Expect '{' before class body.");
 
         var methods = new List<LoxFunctionStatement>();
@@ -146,7 +154,7 @@ internal class LoxParser
         }
 
         consume(LoxTokenTypes.RIGHT_BRACE, "Expect '}' after class body.");
-        return new LoxClassStatement(name, null, methods);
+        return new LoxClassStatement(name, superClass, methods);
     }
 
     private LoxFunctionStatement function(string kind)
@@ -537,6 +545,13 @@ internal class LoxParser
         if (match(LoxTokenTypes.NUMBER, LoxTokenTypes.STRING, LoxTokenTypes.NIL))
         {
             return new LoxLiteralExpression(previous());
+        }
+
+        if (match(LoxTokenTypes.SUPER))
+        {
+            var keyword = previous();
+            consume(LoxTokenTypes.DOT, "Expect '.' after 'super'.");
+            return new LoxSuperExpression(keyword, consume(LoxTokenTypes.IDENTIFIER, "Expect superclass method name."));
         }
 
         if (match(LoxTokenTypes.THIS))

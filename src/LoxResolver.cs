@@ -11,7 +11,8 @@
     private enum ClassTypes
     {
         None,
-        Class
+        Class,
+        SubClass
     }
 
     private readonly Stack<Dictionary<string, bool>> _scopes = new();
@@ -71,7 +72,20 @@
 
     public object? VisitSuperExpr(LoxSuperExpression expr)
     {
-        throw new NotImplementedException();
+        if (_currentClass == ClassTypes.None)
+        {
+            TriggerError(expr.Keyword, "Can't use 'super' outside of a class.");
+        }
+        else if (_currentClass != ClassTypes.SubClass)
+        {
+            TriggerError(expr.Keyword, "Can't use 'super' in a class with no superclass.");
+        }
+        else
+        {
+            ResolveLocal(expr, expr.Keyword);
+        }
+
+        return null;
     }
 
     public object? VisitThisExpr(LoxThisExpression expr)
@@ -117,6 +131,20 @@
         Declare(stmt.Name);
         Define(stmt.Name);
 
+        if (stmt.Superclass is not null)
+        {
+            if (stmt.Name.Lexeme!.Equals(stmt.Superclass.Name.Lexeme))
+            {
+                TriggerError(stmt.Superclass.Name, "A class can't inherit from itself.");
+                return null;
+            }
+            _currentClass = ClassTypes.SubClass;
+            Resolve(stmt.Superclass);
+
+            BeginScope();
+            _scopes.Peek().Add("super", true);
+        }
+
         BeginScope();
         _scopes.Peek().Add("this", true);
 
@@ -132,6 +160,12 @@
         }
 
         EndScope();
+
+        if (stmt.Superclass is not null)
+        {
+            EndScope(); // End the scope for the super class
+        }
+
         _currentClass = enclosingClass;
 
         return null;
