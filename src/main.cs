@@ -44,7 +44,7 @@ scanner.Error += (_, args) =>
     Console.Error.WriteLine($"[line {line}] Error: {message}");
 };
 
-var tokens = scanner.ScanTokens();
+var tokens = scanner.ScanTokens().ToList();
 
 var parser = new LoxParser(tokens);
 parser.Error += (_, args) =>
